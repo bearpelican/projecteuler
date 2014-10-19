@@ -4,12 +4,13 @@ import qualified Data.List as List
 import Data.Function (on)
 import qualified Data.Set as Set
 import qualified Data.List.Split as Split
+import Data.Monoid
 
-data Value = Two | Three | Four | Five | Six | Seven | 
-             Eight | Nine | Ten | Jack | Queen | King | Ace deriving (Eq, Ord, Show, Read)
+data Value = MIN | Two | Three | Four | Five | Six | Seven | 
+             Eight | Nine | Ten | Jack | Queen | King | Ace | MAX deriving (Eq, Ord, Show, Enum)
 
 valueList = [('2', Two), ('3', Three), ('4', Four), ('5', Five), ('6', Six) 
-          ,('7', Seven), ('8', Eight), ('9', Nine), ('0', Ten), ('J', Jack)
+          ,('7', Seven), ('8', Eight), ('9', Nine), ('T', Ten), ('J', Jack)
           ,('Q', Queen), ('K', King), ('A', Ace)]
 
 valueMap = Map.fromList valueList
@@ -23,7 +24,6 @@ suitMap = Map.fromList suitList
 type Card = (Value, Suit)
 
 readCardStr :: String -> Maybe Card
-readCardStr (_:v:s:[]) = readCard v s
 readCardStr (v:s:[]) = readCard v s
 
 readCard :: Char -> Char -> Maybe Card
@@ -40,26 +40,53 @@ type Hand = [Card]
 
 type CardRank = (Rank, Hand)
 
--- Hand, Rank, High card
-type BestHand = (Hand, CardRank, Card)
+-- Hand, Rank, Remainder
+type BestHand = (CardRank, Hand)
 
-readHandStr :: String -> Hand
-readHandStr str = map (readCardStr) cardSplit
+mapTuple :: (a -> b) -> (a, a) -> (b, b)
+mapTuple f (a1, a2) = (f a1, f a2)
+
+readPlayerHandStr :: String -> (Hand, Hand)
+readPlayerHandStr str = mapTuple (readHandStr) (splitAt 5 cardSplit)
     where cardSplit = Split.splitOn " " str
+
+readHandStr :: [String] -> Hand
+readHandStr [] = []
+readHandStr (x:xs) = case readCardStr x of
+                        Nothing -> []
+                        Just card -> card : (readHandStr xs)
 
 -- readHand :: Hand -> BestHand
 -- readHand Hand
 
+compareHand :: (Hand, Hand) -> Ordering
+compareHand (p1, p2) = compareBestHand (bestHand p1) (bestHand p2)
 
+compareBestHand :: BestHand -> BestHand -> Ordering
+compareBestHand (cr1, rm1) (cr2, rm2) = (compareCardRank cr1 cr2) `mappend` (compareHighCard rm1 rm2)
+
+compareCardRank :: CardRank -> CardRank -> Ordering
+compareCardRank  (r1, h1) (r2, h2) = (r1 `compare` r2) `mappend` (compareHighCard h1 h2)
+
+compareHighCard :: Hand -> Hand -> Ordering
+compareHighCard h1 h2 = compareValue (head h1) (head h2)
+
+bestHand :: Hand -> BestHand
+bestHand hand = (cr, remainder)
+    where cr = cardRank hand
+          remainder = hand List.\\ (snd cr)
 
 
 cardRank :: Hand -> CardRank
-cardRank hand = cardRank' hand (rankFunctionList hand)
+cardRank hand = case cardRank' (rankFunctionList sortedHand) of
+                  Nothing -> (High, [head sortedHand])
+                  Just rank -> rank
+    where sortedHand = sortHand hand
 
-cardRank' :: Hand -> [(Rank, Maybe Hand)] -> CardRank
-cardRank' hand [] = (High, [highCard hand])
-cardRank' hand ((_, Nothing):xs) = cardRank' hand xs
-cardRank' hand ((rank, Just h):xs) = (rank, h)
+cardRank' :: [(Rank, Maybe Hand)] -> Maybe CardRank
+cardRank' [] = Nothing
+cardRank' ((_, Nothing):xs) = cardRank' xs
+cardRank' ((rank, Just h):xs) = Just (rank, h)
 
 rankFunctionList :: Hand -> [(Rank, Maybe Hand)]
 rankFunctionList hand = map (mapHand hand) [(StraightFlush, isStraightFlush), (FourKind, isFourKind), 
@@ -69,11 +96,10 @@ rankFunctionList hand = map (mapHand hand) [(StraightFlush, isStraightFlush), (F
 
 
 
-
-
-
 sortHand :: Hand -> Hand
-sortHand hand = List.sortBy (compare `on` fst) hand
+sortHand hand = sortByDescending (compare `on` fst) hand
+
+sortByDescending cmp = List.sortBy (flip cmp)
 
 values :: Hand -> [Value]
 values = map (fst)
@@ -100,8 +126,9 @@ isStraight hand
     | isSucc (values hand) = Just hand
     | otherwise = Nothing
 
-isSucc xs = and $ zipWith (<=) xs (drop 1 xs)
-
+isSucc xs = (order pred) || (order succ)
+-- isSucc xs = (order prec)
+    where order func = and $ zipWith ((==) . func) xs (tail xs)
 
 compareValue :: Card -> Card -> Ordering
 compareValue (a,_) (b,_) = compare a b
@@ -115,6 +142,7 @@ firstDuplicate xs = case duplicates  xs of
                       [] -> []
                       xs -> head xs
 
+-- use list group
 duplicates :: Hand -> [Hand]
 duplicates [] = []
 duplicates (x:xs)
@@ -141,12 +169,12 @@ isNKind n hand
     where duplicate = firstDuplicate hand
 
 hasDupOrder :: Int -> Int -> [[Card]] -> Bool
-hasDupOrder x y list = and $ zipWith ($) [(hasLength x), (hasLength y)] list
+hasDupOrder x y list = hasOrder && ((length list) == 2)
     where hasLength n = (==n) . length
+          hasOrder = and $ zipWith ($) [(hasLength x), (hasLength y)] list
 
 isFullHouse :: Hand -> Maybe Hand
 isFullHouse hand
-    | null list = Nothing
     | hasOrder 2 3 = Just ((last list) ++ (head list))
     | hasOrder 3 2 = Just hand
     | otherwise = Nothing
