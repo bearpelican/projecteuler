@@ -6,6 +6,16 @@ import qualified Data.Set as Set
 import qualified Data.List.Split as Split
 import Data.Monoid
 
+import System.IO
+
+main = do
+  contents <- readFile "poker.txt"
+  let hands = map (readPlayerHandStr) (lines contents)
+  let winner = map (compareHand) hands
+  let number = length $ filter (== GT) winner
+  putStr (show number)
+  putStr (show winner)
+
 data Value = MIN | Two | Three | Four | Five | Six | Seven | 
              Eight | Nine | Ten | Jack | Queen | King | Ace | MAX deriving (Eq, Ord, Show, Enum)
 
@@ -42,6 +52,10 @@ type CardRank = (Rank, Hand)
 
 -- Hand, Rank, Remainder
 type BestHand = (CardRank, Hand)
+
+
+
+
 
 mapTuple :: (a -> b) -> (a, a) -> (b, b)
 mapTuple f (a1, a2) = (f a1, f a2)
